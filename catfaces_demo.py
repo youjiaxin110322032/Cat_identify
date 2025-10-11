@@ -18,7 +18,6 @@ MODEL_PATH = "cat_knn.pkl"        # 模型檔
 LABELS_PATH = "labels.json"       # 貓名與數字 id 對照
 FACE_SIZE = (128, 128)            # 取樣尺寸
 K = 5  # 先試 5 或 7
-UNKNOWN_THRESHOLD = 0.55  # 辨識信心門檻
 knn = KNeighborsClassifier(n_neighbors=K, metric="cosine", algorithm="brute")
 CASCADE_NAME = "haarcascade_frontalcatface.xml"
 

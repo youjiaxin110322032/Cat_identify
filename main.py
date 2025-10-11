@@ -13,7 +13,9 @@ app = FastAPI(title="Cat Face ID API", version="1.0")
 # 開發中：先用 ["*"] 放行全部（上線請改成你的前端網域）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://http://127.0.0.1:8000/predict"],  # 例如改成 ["http://127.0.0.1:5500", "http://localhost:5500"]
+    allow_origins=[
+        "https://youjiaxin110322032.github.io",  # ✅ 允許 GitHub Pages 前端連線
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
