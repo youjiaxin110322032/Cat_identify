@@ -1,15 +1,5 @@
 {
-  "functions": {
-    "api/index.py": {
-      "runtime": "python3.12",
-      "memory": 1024,
-      "maxDuration": 10
-    }
-  },
-  "routes": [
-    { "src": "/labels", "dest": "/api/index.py" },
-    { "src": "/reload", "dest": "/api/index.py" },
-    { "src": "/predict", "dest": "/api/index.py" },
-    { "src": "/.*", "dest": "/api/index.py" }
-  ]
+  "builds": [{ "src": "api/index.py", "use": "@vercel/python" }],
+  "functions": { "api/index.py": { "runtime": "python3.12" } },
+  "routes": [{ "src": "/(.*)", "dest": "/api/index.py" }]
 }
