@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Cat Face ID — Mobile</title>
+  <style>
+    :root { --green:#6aa66a; --dark:#2f5030; --bg:#f4fff1; }
+    html,body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans TC",sans-serif;color:#1a1a1a}
+    .wrap{max-width:480px;margin:0 auto;padding:16px 16px 80px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    header h1{font-size:18px;margin:0;color:var(--dark)}
+    .api{font-size:12px;opacity:.8;word-break:break-all}
+    .known{margin-top:6px;font-size:12px;color:#2b5b2b}
+    .cam-box{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:3/4}
+    video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    canvas.overlay{pointer-events:none}
+    .btns{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+    button{flex:1 1 120px;border:0;border-radius:10px;padding:12px 14px;font-weight:700;background:var(--green);color:#fff;cursor:pointer}
+    button.secondary{background:#e9f6e9;color:#2b5b2b;border:1px solid #b9e0b9}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .panel{background:#fff;border:1px solid #e6efe6;border-radius:12px;padding:12px}
+    .row{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px dashed #d9ead9}
+    .row:first-child{border-top:0}
+    .tag{font-size:12px;color:#2b5b2b;background:#e9f6e9;border:1px solid #b9e0b9;border-radius:999px;padding:2px 8px}
+    .foot{position:fixed;inset:auto 0 0 0;background:linear-gradient(180deg,transparent,rgba(244,255,241,.9) 20%,rgba(244,255,241,1) 60%);padding:8px 12px}
+    .msg{font-size:12px;color:#4a4a4a}
+    input[type="file"]{display:none}
+    .small{font-size:12px;opacity:.8}
+    .livebar{display:flex;align-items:center;gap:10px;margin-top:-4px}
+    .livebar label{font-size:12px;color:#2b5b2b}
+    .livebar input[type="range"]{flex:1}
+    /* Modal */
+    .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
+    .modal{background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:16px 18px;max-width:90vw}
+    .modal h3{margin:0 0 8px;font-size:16px;color:var(--dark)}
+    .modal .names{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{background:#e9f6e9;border:1px solid #b9e0b9;color:#2b5b2b;border-radius:999px;padding:6px 10px;font-weight:700}
+    .modal .btns{margin-top:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>🐱 Cat Face ID</h1>
+        <div class="known">已知貓：<span id="knownCats" class="small">載入中…</span></div>
+      </div>
+      <div class="api">API：<span id="api-url" class="small"></span></div>
+    </header>
+
+    <!-- 攝影機區 -->
+    <div class="cam-box">
+      <video id="preview" playsinline autoplay muted></video>
+      <canvas id="overlay" class="overlay"></canvas>
+    </div>
+
+    <!-- 操作按鈕 -->
+    <div class="btns">
+      <button id="btnStart" type="button">啟動相機</button>
+      <button id="btnSwap" class="secondary" type="button">切換鏡頭</button>
+      <button id="btnShot" type="button">截圖 & 辨識</button>
+      <button id="btnLive" type="button" class="secondary">即時辨識</button>
+      <label class="secondary" style="flex:1 1 120px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer">
+        <input id="fileInput" type="file" accept="image/*" capture="environment" />
+        上傳 / 開相機
+      </label>
+    </div>
+
+    <!-- 即時頻率控制 -->
+    <div class="livebar">
+      <label for="liveRate">頻率(ms)：</label>
+      <input id="liveRate" type="range" min="300" max="2000" step="100" value="800" />
+      <span id="liveRateVal" class="small">800</span>
+    </div>
+
+    <!-- 結果面板（保留清單） -->
+    <section class="panel" id="resultPanel" hidden>
+      <div id="resultList"></div>
+    </section>
+
+    <p class="small">提示：手機必須使用 HTTPS（或 localhost）才能啟動相機。</p>
+  </div>
+
+  <div class="foot"><div class="msg" id="status">狀態：待機</div></div>
+
+  <!-- Modal（懸浮視窗） -->
+  <div id="backdrop" class="backdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h3>辨識結果</h3>
+      <div id="modalNames" class="names"></div>
+      <div class="btns">
+        <button id="modalClose" type="button" class="secondary">關閉</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/** 🔧 把這個改成你的後端網域 */
+const API_URL = 'https://cat-face-id-api.onrender.com/predict';
+document.getElementById('api-url').textContent = API_URL;
+
+const video = document.getElementById('preview');
+const overlay = document.getElementById('overlay');
+const ctx = overlay.getContext('2d');
+const statusEl = document.getElementById('status');
+const btnStart = document.getElementById('btnStart');
+const btnSwap  = document.getElementById('btnSwap');
+const btnShot  = document.getElementById('btnShot');
+const btnLive  = document.getElementById('btnLive');
+const fileInput = document.getElementById('fileInput');
+const resultPanel = document.getElementById('resultPanel');
+const resultList  = document.getElementById('resultList');
+const liveRate = document.getElementById('liveRate');
+const liveRateVal = document.getElementById('liveRateVal');
+const backdrop = document.getElementById('backdrop');
+const modalNames = document.getElementById('modalNames');
+const modalClose = document.getElementById('modalClose');
+const knownCats = document.getElementById('knownCats');
+
+let usingBack = true;
+let currentStream = null;
+let liveTimer = null;
+let inflight = false;
+let baseInterval = Number(liveRate.value);
+let backoff = 0;
+const maxBackoffMs = 3000;
+const toJpegQuality = 0.9;
+
+function setStatus(s){ statusEl.textContent = '狀態：' + s; }
+function setBusy(b){ btnShot.disabled = b; btnSwap.disabled = b; btnLive.disabled = false; }
+function clearOverlay(){ ctx.clearRect(0,0,overlay.width,overlay.height); }
+
+function resizeOverlay() {
+  const rect = video.getBoundingClientRect();
+  overlay.width = rect.width * devicePixelRatio;
+  overlay.height = rect.height * devicePixelRatio;
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  clearOverlay();
+}
+window.addEventListener('resize', resizeOverlay);
+
+// 相機啟動（A/B/C 退避）
+async function startCamera() {
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('此瀏覽器不支援相機 API'); return;
+    }
+    if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+    clearOverlay();
+
+    const a = { audio:false, video:{ facingMode:{ ideal: usingBack?'environment':'user' }, width:{ ideal:1280 }, height:{ ideal:1700 } } };
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia(a); }
+    catch {
+      try {
+        const b = { audio:false, video:{ width:{ ideal:1280 }, height:{ ideal:1700 } } };
+        stream = await navigator.mediaDevices.getUserMedia(b);
+        setStatus('相機啟動（預設鏡頭）');
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
+        setStatus('相機啟動（最小參數）');
+      }
+    }
+    currentStream = stream;
+    video.srcObject = stream;
+    await video.play();
+
+    await new Promise(res => {
+      if (video.readyState >= 1) return res();
+      video.onloadedmetadata = () => res();
+      setTimeout(res, 1200);
+    });
+
+    resizeOverlay();
+    setStatus('相機啟動成功');
+  } catch (err) {
+    console.warn(err);
+    alert('相機啟動失敗，請確認 HTTPS 與權限。');
+  }
+}
+
+// 擷取影格
+async function grabVideoFrameBlob() {
+  if (!video.videoWidth) return null;
+  const W = video.videoWidth, H = video.videoHeight;
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  const tctx = tmp.getContext('2d');
+  tctx.drawImage(video, 0, 0, W, H);
+  const blob = await new Promise(res => tmp.toBlob(res, 'image/jpeg', toJpegQuality));
+  return { blob, meta: { sourceW: W, sourceH: H } };
+}
+
+// 呼叫 API
+async function sendToAPI(imageBlob){
+  const fd = new FormData();
+  fd.append('file', imageBlob, 'shot.jpg');
+  const r = await fetch(API_URL, { method: 'POST', body: fd });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return await r.json();
+}
+
+// Overlay 標籤
+function drawLabel(ctx, text, x, y) {
+  ctx.font = 'bold 14px system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans TC", sans-serif';
+  const padX = 6, padY = 4;
+  const w = ctx.measureText(text).width + padX*2;
+  const h = 16 + padY*2;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(x, y - h, w, h);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, x + padX, y - padY);
+  ctx.restore();
+}
+
+// 在相機畫面上畫框＋名字（即時/上傳都用）
+function renderOverlay(res, meta){
+  resultPanel.hidden = false;
+  resultList.innerHTML = '';
+  clearOverlay();
+
+  const dispW = video.getBoundingClientRect().width;
+  const dispH = video.getBoundingClientRect().height;
+  const scaleX = dispW / (res.width || meta?.sourceW || 1);
+  const scaleY = dispH / (res.height || meta?.sourceH || 1);
+
+  const boxes = res.boxes || [];
+  for (const b of boxes) {
+    const x = b.x * scaleX, y = b.y * scaleY, w = b.w * scaleX, h = b.h * scaleY;
+    const isUnknown = (b.name || 'Unknown') === 'Unknown';
+    ctx.save();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = isUnknown ? '#e53935' : '#00c853';
+    ctx.strokeRect(x, y, w, h);
+    const label = `${b.name || 'Unknown'} (${(b.proba ?? 0).toFixed(2)})`;
+    drawLabel(ctx, label, x + 4, Math.max(y - 6, 18));
+    ctx.restore();
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div><div><strong>${b.name || 'Unknown'}</strong></div>
+      <div class="small">信心：${(b.proba ?? 0).toFixed(2)}</div></div>
+      <div class="tag">${Math.round(b.w)}×${Math.round(b.h)}</div>`;
+    resultList.appendChild(row);
+  }
+  if (boxes.length === 0) resultList.innerHTML = `<div class="row"><em>沒有偵測到貓臉</em></div>`;
+}
+
+// Modal：顯示名字
+function showNamesModal(names){
+  const box = modalNames;
+  box.innerHTML = '';
+  if (names.length === 0) {
+    box.innerHTML = '<span class="chip">沒有偵測到貓臉</span>';
+  } else {
+    names.forEach(n => {
+      const span = document.createElement('span');
+      span.className = 'chip';
+      span.textContent = n;
+      box.appendChild(span);
+    });
+  }
+  backdrop.style.display = 'flex';
+}
+function closeModal(){ backdrop.style.display = 'none'; }
+modalClose.addEventListener('click', closeModal);
+backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
+
+// 截圖 & 辨識：只開 Modal 顯示名字
+async function captureAndSend() {
+  if (!video.videoWidth) return;
+  setBusy(true); setStatus('擷取畫面中…');
+  try {
+    const g = await grabVideoFrameBlob();
+    if (!g) return;
+    setStatus('上傳辨識中…');
+    const data = await sendToAPI(g.blob);
+    const names = (data.boxes || []).map(b => b.name || 'Unknown');
+    showNamesModal(names);
+    setStatus('完成');
+  } catch (e) {
+    console.error(e);
+    alert('辨識失敗：' + e.message);
+    setStatus('辨識失敗');
+  } finally {
+    setBusy(false);
+  }
+}
+
+// 即時辨識
+function currentIntervalMs(){ return Math.min(maxBackoffMs, baseInterval * (1 << backoff)); }
+function scheduleNextTick(){ liveTimer = setTimeout(liveTick, currentIntervalMs()); }
+async function liveTick(){
+  if (!video.videoWidth) { scheduleNextTick(); return; }
+  if (inflight) { scheduleNextTick(); return; }
+  inflight = true;
+  try {
+    const g = await grabVideoFrameBlob();
+    if (!g) { inflight = false; scheduleNextTick(); return; }
+    const data = await sendToAPI(g.blob);
+    renderOverlay(data, g.meta);
+    backoff = 0;
+  } catch (e) {
+    console.warn('即時辨識錯誤:', e);
+    if (baseInterval * (1 << (backoff + 1)) <= maxBackoffMs) backoff++;
+    setStatus('辨識失敗，退避重試…');
+  } finally {
+    inflight = false;
+    if (liveTimer !== null) scheduleNextTick();
+  }
+}
+function startLive(){
+  if (liveTimer !== null) return;
+  backoff = 0; liveTimer = 0; scheduleNextTick();
+  btnLive.textContent = '停止即時'; btnLive.classList.remove('secondary');
+  setStatus('即時辨識啟動');
+}
+function stopLive(){
+  if (liveTimer !== null) clearTimeout(liveTimer);
+  liveTimer = null; inflight = false; backoff = 0;
+  btnLive.textContent = '即時辨識'; btnLive.classList.add('secondary');
+  setStatus('即時辨識已停止');
+}
+
+// 事件
+btnStart.addEventListener('click', async () => { setStatus('嘗試開啟相機…'); await startCamera(); });
+btnSwap.addEventListener('click', async () => { usingBack = !usingBack; await startCamera(); });
+btnShot.addEventListener('click', captureAndSend);
+btnLive.addEventListener('click', () => { if (liveTimer === null) startLive(); else stopLive(); });
+fileInput.addEventListener('change', async (e) => {
+  const f = e.target.files?.[0]; if (!f) return;
+  setBusy(true);
+  try {
+    const data = await sendToAPI(f);
+    renderOverlay(data, { sourceW: video.videoWidth || 0, sourceH: video.videoHeight || 0 });
+    setStatus('完成');
+  } catch (e2) {
+    console.error(e2); alert('辨識失敗：' + e2.message);
+  } finally { setBusy(false); fileInput.value=''; }
+});
+liveRate.addEventListener('input', () => { baseInterval = Number(liveRate.value); liveRateVal.textContent = baseInterval; });
+
+// 啟動：需要 HTTPS 或 localhost
+if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'){
+  setStatus('待機：請點「啟動相機」');
+} else {
+  setStatus('需 HTTPS 或 localhost 才能啟動相機');
+}
+
+// 顯示模型已知貓名
+(async () => {
+  try {
+    const labelsURL = API_URL.replace('/predict','/labels');
+    const r = await fetch(labelsURL);
+    if (!r.ok) throw new Error('labels fetch failed');
+    const j = await r.json();
+    knownCats.textContent = (j.labels || []).join('、') || '（無）';
+  } catch {
+    knownCats.textContent = '無法取得';
+  }
+})();
+</script>
+</body>
+</html>
