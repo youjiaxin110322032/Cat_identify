@@ -4,7 +4,6 @@ import numpy as np
 from PIL import Image
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from mangum import Mangum
 
 # 你的辨識模組（確保這些檔案在 repo 根目錄，或可被 import）
 # - catfaces_demo.py
@@ -18,7 +17,7 @@ from catfaces_demo import (
     UNKNOWN_THRESHOLD,
 )
 
-app = FastAPI(title="Cat Face ID API (Vercel)", version="1.0")
+app = FastAPI(title="Cat Face ID API", version="1.1")
 
 # CORS：把前端網域加進來
 app.add_middleware(
@@ -86,7 +85,3 @@ async def predict(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image or server error: {e}")
-
-# ☆☆☆ 讓 FastAPI 變成 Vercel 可用的 Serverless 入口
-from mangum import Mangum
-handler = Mangum(app)
