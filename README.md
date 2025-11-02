@@ -1,4 +1,4 @@
-# 🐱 Cat Face Recognition API
+#  Cat Face Recognition API
 
 This project is a simple FastAPI-based service for identifying cats using OpenCV and KNN.
 
